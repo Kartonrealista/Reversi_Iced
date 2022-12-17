@@ -1,0 +1,20 @@
+[package]
+name = "reversi_iced"
+version = "0.1.0"
+edition = "2021"
+license = "Apache 2.0"
+
+[package.metadata.deb]
+copyright = "2022, Karton Realista"
+maintainer = "Karton Realista"
+assets = [["target/release/reversi_iced.desktop", "usr/share/applications/", "644"]]
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[profile.release]
+lto = true
+
+[dependencies]
+iced = "0.5.2"
+iced_native = "0.6.1"
+iced_wgpu = "0.6.1"
+rand = "0.8.5"
