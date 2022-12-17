@@ -366,9 +366,9 @@ impl Board {
                 let corner_ids =
                     [0, WIDTH - 1, WIDTH * HEIGHT - 1, (WIDTH) * (HEIGHT - 1)];
                 let corner_boost = corner_ids.iter().fold(0, |acc, &id| {
-                    if current_board.board[id as usize] != orignal_color {
+                    if current_board.board[id as usize] == orignal_color {
                         acc + 80
-                    } else if current_board.board[id as usize] == total_opponent {
+                    } else if current_board.board[id as usize] != total_opponent {
                         acc + 40
                     } else {
                         acc
