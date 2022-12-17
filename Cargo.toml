@@ -7,7 +7,6 @@ license = "Apache 2.0"
 [package.metadata.deb]
 copyright = "2022, Karton Realista"
 maintainer = "Karton Realista"
-assets = [["target/release/reversi_iced.desktop", "usr/share/applications/", "644"]]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [profile.release]
