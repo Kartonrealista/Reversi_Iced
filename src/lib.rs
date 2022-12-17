@@ -1,4 +1,4 @@
-use circles::circles::circle;
+use circles::circle;
 use iced::{
     alignment::{Horizontal, Vertical},
     widget::{button, column, container, row, text, Column, Container, Row},
@@ -169,12 +169,12 @@ impl Board {
     }
     fn moves_are_possible(&self, color: Tile) -> bool {
         for id in 0..WIDTH * HEIGHT {
-            if self.board[id as usize] != Tile::Empty(DrawOrEmpty::Empty) {
-                continue;
-            } else if Self::neighbours(id).iter().all(|neighbour| {
-                self.board[*neighbour as usize]
-                    == Tile::Empty(DrawOrEmpty::Empty)
-            }) {
+            if self.board[id as usize] != Tile::Empty(DrawOrEmpty::Empty)
+                || Self::neighbours(id).iter().all(|neighbour| {
+                    self.board[*neighbour as usize]
+                        == Tile::Empty(DrawOrEmpty::Empty)
+                })
+            {
                 continue;
             };
             let (i, j) = index_to_pair(id);
@@ -259,23 +259,6 @@ impl Board {
         }
         dumb_check
     }
-    // fn count(&self) -> (u32, u32) {
-    //     let black_tiles = self.board.iter().fold(0, |acc, &x| {
-    //         if x == Tile::Black {
-    //             acc + 1
-    //         } else {
-    //             acc
-    //         }
-    //     });
-    //     let white_tiles = self.board.iter().fold(0, |acc, &x| {
-    //         if x == Tile::White {
-    //             acc + 1
-    //         } else {
-    //             acc
-    //         }
-    //     });
-    //     (white_tiles, black_tiles)
-    // }
     fn count_of(&self, color: Tile) -> u32 {
         let (white_tiles, black_tiles) = (self.white_count, self.black_count);
         match color {
@@ -333,9 +316,6 @@ impl Board {
                 });
             }
         }
-        // for i in &mut score.children {
-        //     println!("{}", i.board)
-        // }
         for child in &mut score.children {
             Self::minmax_helper(opponent, child, 6, false, color);
         }
@@ -374,49 +354,26 @@ impl Board {
             for id in 0..WIDTH * HEIGHT {
                 if node.board.board[id as usize]
                     != Tile::Empty(DrawOrEmpty::Empty)
+                    || Self::neighbours(id).iter().all(|neighbour| {
+                        node.board.board[*neighbour as usize]
+                            == Tile::Empty(DrawOrEmpty::Empty)
+                    })
                 {
-                    continue;
-                } else if Self::neighbours(id).iter().all(|neighbour| {
-                    node.board.board[*neighbour as usize]
-                        == Tile::Empty(DrawOrEmpty::Empty)
-                }) {
                     continue;
                 };
                 let (row, column) = index_to_pair(id);
                 let mut current_board = node.board.clone();
-                let mut corner_boost = 0;
-                if current_board.board[0] == orignal_color {
-                    corner_boost += 40;
-                }
-                if current_board.board[0] != total_opponent {
-                    corner_boost += 40;
-                }
-                if current_board.board[(WIDTH - 1) as usize] == orignal_color {
-                    corner_boost += 40;
-                }
-                if current_board.board[(WIDTH - 1) as usize] != total_opponent {
-                    corner_boost += 40;
-                }
-                if current_board.board[(WIDTH * HEIGHT - 1) as usize]
-                    == orignal_color
-                {
-                    corner_boost += 40;
-                }
-                if current_board.board[(WIDTH * HEIGHT - 1) as usize]
-                    != total_opponent
-                {
-                    corner_boost += 40;
-                }
-                if current_board.board[((WIDTH) * (HEIGHT - 1)) as usize]
-                    == orignal_color
-                {
-                    corner_boost += 40;
-                }
-                if current_board.board[((WIDTH) * (HEIGHT - 1)) as usize]
-                    != total_opponent
-                {
-                    corner_boost += 40;
-                }
+                let corner_ids =
+                    [0, WIDTH - 1, WIDTH * HEIGHT - 1, (WIDTH) * (HEIGHT - 1)];
+                let corner_boost = corner_ids.iter().fold(0, |acc, &id| {
+                    if current_board.board[id as usize] != orignal_color {
+                        acc + 80
+                    } else if current_board.board[id as usize] == total_opponent {
+                        acc + 40
+                    } else {
+                        acc
+                    }
+                });
                 if current_board.make_move(row, column, player) {
                     node.add_child(Node {
                         player: false,
@@ -428,9 +385,6 @@ impl Board {
                     });
                 }
             }
-            // for i in &mut node.children {
-            //     println!("{}", i.board)
-            // }
             return;
         }
         let mut max: u32 = 0;
@@ -589,7 +543,11 @@ impl Display for Board {
         write!(f, "{}", out)
     }
 }
-
+impl Default for Board {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Message {
     EmptyPressed(u32, u32),
@@ -638,22 +596,20 @@ impl Sandbox for Game {
         } else if message == Message::Reset {
             *self = Self::new();
             self.game_board.starting_position();
+        } else if self.game_board.turn == self.menu.chosen_color {
+            self.game_board.colored_move(
+                message,
+                Player,
+                Computer,
+                self.game_board.turn,
+            )
         } else {
-            if self.game_board.turn == self.menu.chosen_color {
-                self.game_board.colored_move(
-                    message,
-                    Player,
-                    Computer,
-                    self.game_board.turn,
-                )
-            } else {
-                self.game_board.colored_move(
-                    message,
-                    Computer,
-                    Player,
-                    self.game_board.turn,
-                )
-            }
+            self.game_board.colored_move(
+                message,
+                Computer,
+                Player,
+                self.game_board.turn,
+            )
         }
     }
 
@@ -778,6 +734,6 @@ fn playfield(game: &Game) -> Container<Message> {
             })]
         ]
         .padding(20)
-        .align_items(Alignment::Center)
+        .align_items(Alignment::Center),
     )
 }
