@@ -27,7 +27,7 @@ pub fn index_to_pair(id: u32) -> (u32, u32) {
 #[derive(Clone)]
 struct Node {
     pub value: u32,
-    pub player: bool,
+    pub is_original_player: bool,
     pub board: Board,
     pub children: Vec<Node>,
 }
@@ -41,7 +41,7 @@ impl Node {
                     child.value = child.minmax()
                 }
             }
-            if !self.player {
+            if !self.is_original_player {
                 self.value = self
                     .children
                     .iter()
@@ -73,42 +73,43 @@ pub enum PlayerOrComputer {
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub enum Tile {
-    Black,
+pub enum StoneColor {
     White,
-    Empty(DrawOrEmpty),
+    Black,
 }
-impl Tile {
+impl StoneColor {
     fn reverse(&self) -> Self {
         match self {
             Self::Black => Self::White,
             Self::White => Self::Black,
-            _ => panic!(),
         }
     }
 }
+
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub enum DrawOrEmpty {
-    Empty,
+pub struct Tile(pub Option<StoneColor>);
+
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+pub enum GameOutcome {
+    Win(StoneColor),
     Draw,
+    InProgress,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Board {
     pub board: Vec<Tile>,
-    pub turn: Tile,
-    pub win: Tile,
+    pub turn: StoneColor,
+    pub win: GameOutcome,
     pub white_count: u32,
     pub black_count: u32,
 }
 impl Board {
     fn make_empty() -> Board {
         Board {
-            board: (0..WIDTH * HEIGHT)
-                .map(|_| Tile::Empty(DrawOrEmpty::Empty))
-                .collect(),
-            turn: Tile::Black,
-            win: Tile::Empty(DrawOrEmpty::Empty),
+            board: (0..WIDTH * HEIGHT).map(|_| Tile(None)).collect(),
+            turn: StoneColor::Black,
+            win: GameOutcome::InProgress,
             white_count: 0,
             black_count: 0,
         }
@@ -116,10 +117,10 @@ impl Board {
     fn starting_position(&mut self) {
         let id1 = pair_to_index(HEIGHT / 2 - 1, WIDTH / 2 - 1) as usize;
         let id2 = pair_to_index(HEIGHT / 2, WIDTH / 2 - 1) as usize;
-        self.board[id1] = Tile::White;
-        self.board[id1 + 1] = Tile::Black;
-        self.board[id2] = Tile::Black;
-        self.board[id2 + 1] = Tile::White;
+        self.board[id1].0 = Some(StoneColor::White);
+        self.board[id1 + 1].0 = Some(StoneColor::Black);
+        self.board[id2].0 = Some(StoneColor::Black);
+        self.board[id2 + 1].0 = Some(StoneColor::White);
         self.black_count = 2;
         self.white_count = 2;
     }
@@ -167,12 +168,11 @@ impl Board {
 
         out
     }
-    fn moves_are_possible(&self, color: Tile) -> bool {
+    fn moves_are_possible(&self, color: StoneColor) -> bool {
         for id in 0..WIDTH * HEIGHT {
-            if self.board[id as usize] != Tile::Empty(DrawOrEmpty::Empty)
-                || Self::neighbours(id).iter().all(|neighbour| {
-                    self.board[*neighbour as usize]
-                        == Tile::Empty(DrawOrEmpty::Empty)
+            if self.board[id as usize].0 != None
+                || Self::neighbours(id).iter().all(|&neighbour| {
+                    self.board[neighbour as usize].0 != Some(color.reverse())
                 })
             {
                 continue;
@@ -184,13 +184,18 @@ impl Board {
         }
         false
     }
-    pub fn make_move(&mut self, row: u32, column: u32, color: Tile) -> bool {
+    pub fn make_move(
+        &mut self,
+        row: u32,
+        column: u32,
+        color: StoneColor,
+    ) -> bool {
         let id = pair_to_index(row, column);
         let (i2, j2) = index_to_pair(id);
         //let cloned_self = self.clone();
         let target = &mut self.board;
         let mut dumb_check = false;
-        if target[id as usize] != Tile::Empty(DrawOrEmpty::Empty) {
+        if target[id as usize].0 != None {
             return false;
         }
         for neighbour in Self::neighbours(id) {
@@ -203,45 +208,42 @@ impl Board {
 
             let mut white_update = 0;
             let mut black_update = 0;
-            if target[new_id as usize] == color {
+            if target[new_id as usize].0 == Some(color) {
                 continue;
             }
             loop {
-                neighbour_color = target[new_id as usize];
-                if neighbour_color == Tile::Empty(DrawOrEmpty::Empty) {
+                neighbour_color = target[new_id as usize].0;
+                if neighbour_color == None {
                     break;
                 }
 
-                if neighbour_color != Tile::Empty(DrawOrEmpty::Empty)
-                    && neighbour_color != color
-                {
+                if neighbour_color != None && neighbour_color != Some(color) {
                     match color {
-                        Tile::Black => {
+                        StoneColor::Black => {
                             white_update -= 1;
                             black_update += 1;
                         }
-                        Tile::White => {
+                        StoneColor::White => {
                             white_update += 1;
                             black_update -= 1;
                         }
-                        Tile::Empty(_) => unreachable!(),
                     };
                     buf.push(new_id);
-                } else if (neighbour_color == color) && !buf.is_empty() {
+                } else if (neighbour_color == Some(color)) && !buf.is_empty() {
                     if !dumb_check {
                         match color {
-                            Tile::Black => {
+                            StoneColor::Black => {
                                 black_update += 1;
                             }
-                            Tile::White => {
+                            StoneColor::White => {
                                 white_update += 1;
                             }
-                            Tile::Empty(_) => unreachable!(),
                         };
-                        target[id as usize] = color;
+                        target[id as usize].0 = Some(color);
                     }
                     dumb_check = true;
-                    buf.iter().for_each(|&id| target[id as usize] = color);
+                    buf.iter()
+                        .for_each(|&id| target[id as usize].0 = Some(color));
                     self.black_count += black_update;
                     self.white_count += white_update;
                     break;
@@ -259,49 +261,41 @@ impl Board {
         }
         dumb_check
     }
-    fn count_of(&self, color: Tile) -> u32 {
+    fn count_of(&self, color: StoneColor) -> u32 {
         let (white_tiles, black_tiles) = (self.white_count, self.black_count);
         match color {
-            Tile::White => white_tiles,
-            Tile::Black => black_tiles,
-            _ => unimplemented!(),
+            StoneColor::White => white_tiles,
+            StoneColor::Black => black_tiles,
         }
     }
-    fn wincheck(&self) -> Tile {
+    fn wincheck(&self) -> GameOutcome {
         let (white_tiles, black_tiles) = (self.white_count, self.black_count);
-        if self
-            .board
-            .iter()
-            .all(|&x| x != Tile::Empty(DrawOrEmpty::Empty))
-            || (!self.moves_are_possible(Tile::Black)
-                && !self.moves_are_possible(Tile::White))
+        if self.board.iter().all(|&x| x.0 != None)
+            || (!self.moves_are_possible(StoneColor::Black)
+                && !self.moves_are_possible(StoneColor::White))
         {
             match white_tiles.cmp(&black_tiles) {
-                Ordering::Greater => Tile::White,
-                Ordering::Less => Tile::Black,
-                Ordering::Equal => Tile::Empty(DrawOrEmpty::Draw),
+                Ordering::Greater => GameOutcome::Win(StoneColor::White),
+                Ordering::Less => GameOutcome::Win(StoneColor::Black),
+                Ordering::Equal => GameOutcome::Draw,
             }
         } else {
-            Tile::Empty(DrawOrEmpty::Empty)
+            GameOutcome::InProgress
         }
     }
-    pub fn minmax_move(&mut self, color: Tile) -> bool {
+    pub fn minmax_move(&mut self, color: StoneColor) -> bool {
         let player = color;
-        let opponent = match color {
-            Tile::White => Tile::Black,
-            Tile::Black => Tile::White,
-            _ => unreachable!(),
-        };
+        let opponent = player.reverse();
         let board = self.clone();
         let mut score = Node {
-            player: false,
+            is_original_player: false,
             value: 0,
             board,
-            children: vec![],
+            children: Vec::with_capacity(32),
         };
         let mut ids = Vec::with_capacity(32);
         for id in 0..WIDTH * HEIGHT {
-            if self.board[id as usize] != Tile::Empty(DrawOrEmpty::Empty) {
+            if self.board[id as usize].0 != None {
                 continue;
             };
             let (row, column) = index_to_pair(id);
@@ -309,7 +303,7 @@ impl Board {
             if current_board.make_move(row, column, player) {
                 ids.push(id);
                 score.add_child(Node {
-                    player: true,
+                    is_original_player: true,
                     value: 0,
                     board: current_board,
                     children: Vec::with_capacity(10),
@@ -333,30 +327,20 @@ impl Board {
         false
     }
     fn minmax_helper(
-        color: Tile,
+        color: StoneColor,
         node: &mut Node,
         depth: u32,
-        playerbool: bool,
-        orignal_color: Tile,
+        is_original_player: bool,
+        orignal_color: StoneColor,
     ) {
         let player = color;
-        let opponent = match color {
-            Tile::White => Tile::Black,
-            Tile::Black => Tile::White,
-            _ => unreachable!(),
-        };
-        let total_opponent = match orignal_color {
-            Tile::White => Tile::Black,
-            Tile::Black => Tile::White,
-            _ => unreachable!(),
-        };
+        let opponent = player.reverse();
         if depth == 2 {
             for id in 0..WIDTH * HEIGHT {
-                if node.board.board[id as usize]
-                    != Tile::Empty(DrawOrEmpty::Empty)
-                    || Self::neighbours(id).iter().all(|neighbour| {
-                        node.board.board[*neighbour as usize]
-                            == Tile::Empty(DrawOrEmpty::Empty)
+                if node.board.board[id as usize].0 != None
+                    || Self::neighbours(id).iter().all(|&neighbour| {
+                        node.board.board[neighbour as usize].0
+                            != Some(color.reverse())
                     })
                 {
                     continue;
@@ -366,9 +350,10 @@ impl Board {
                 let corner_ids =
                     [0, WIDTH - 1, WIDTH * HEIGHT - 1, (WIDTH) * (HEIGHT - 1)];
                 let corner_boost = corner_ids.iter().fold(0, |acc, &id| {
-                    if current_board.board[id as usize] == orignal_color {
+                    if current_board.board[id as usize].0 == Some(orignal_color)
+                    {
                         acc + 80
-                    } else if current_board.board[id as usize] != total_opponent {
+                    } else if current_board.board[id as usize].0 == None {
                         acc + 40
                     } else {
                         acc
@@ -376,7 +361,7 @@ impl Board {
                 });
                 if current_board.make_move(row, column, player) {
                     node.add_child(Node {
-                        player: false,
+                        is_original_player: false,
                         value: 2 * current_board.count_of(orignal_color)
                             + 1
                             + corner_boost,
@@ -389,8 +374,7 @@ impl Board {
         }
         let mut max: u32 = 0;
         for id in 0..WIDTH * HEIGHT {
-            if node.board.board[id as usize] != Tile::Empty(DrawOrEmpty::Empty)
-            {
+            if node.board.board[id as usize].0 != None {
                 continue;
             };
             let (row, column) = index_to_pair(id);
@@ -400,9 +384,9 @@ impl Board {
                 if max < score_player {
                     max = score_player
                 };
-                if score_player > max / 5 * 3 {
+                if score_player > max / 2 {
                     node.add_child(Node {
-                        player: playerbool,
+                        is_original_player,
                         value: 0,
                         board: current_board.clone(),
                         children: Vec::with_capacity(10),
@@ -422,7 +406,7 @@ impl Board {
                 opponent,
                 child,
                 depth - 1,
-                !playerbool,
+                !is_original_player,
                 orignal_color,
             );
         }
@@ -432,7 +416,7 @@ impl Board {
         message: Message,
         mover_self: PlayerOrComputer,
         mover_other: PlayerOrComputer,
-        color: Tile,
+        color: StoneColor,
     ) {
         let (mover1, mover2) = match (mover_self, mover_other) {
             (Player, Player) => (&message, &message),
@@ -448,9 +432,8 @@ impl Board {
         } {
             let wincheck = self.wincheck();
             match wincheck {
-                Tile::Black => self.win = Tile::Black,
-                Tile::White => self.win = Tile::White,
-                _ => self.turn = color.reverse(),
+                GameOutcome::InProgress => self.turn = color.reverse(),
+                outcome => self.win = outcome,
             };
             if mover2 == &Message::ComputerPlays {
                 self.colored_move(
@@ -465,10 +448,10 @@ impl Board {
             if !self.moves_are_possible(color.reverse()) {
                 let wincheck = self.wincheck();
                 match wincheck {
-                    Tile::Empty(DrawOrEmpty::Empty) => {
+                    GameOutcome::InProgress => {
                         unreachable!()
                     }
-                    tile => self.win = tile,
+                    outcome => self.win = outcome,
                 };
             } else {
                 self.turn = color.reverse();
@@ -485,8 +468,10 @@ impl Board {
 impl Display for Board {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let mut out = String::new();
-        let (white_tiles, black_tiles) =
-            (self.count_of(Tile::White), self.count_of(Tile::Black));
+        let (white_tiles, black_tiles) = (
+            self.count_of(StoneColor::White),
+            self.count_of(StoneColor::Black),
+        );
         out += &format!("● {white_tiles}:{black_tiles} ○\n");
         out += "    ";
         for i in 0..WIDTH {
@@ -516,13 +501,10 @@ impl Display for Board {
             line.push_str(" |  ");
             for j in 0..WIDTH {
                 let tile = &self.board[pair_to_index(i, j) as usize];
-                let tile_string = match tile {
-                    Tile::Empty(DrawOrEmpty::Empty) => {
-                        "\x1B[1;93m□\x1B[0m".to_string()
-                    }
-                    Tile::White => "●".to_string(),
-                    Tile::Black => "○".to_string(),
-                    _ => unreachable!(),
+                let tile_string = match tile.0 {
+                    None => "\x1B[1;93m□\x1B[0m".to_string(),
+                    Some(StoneColor::White) => "●".to_string(),
+                    Some(StoneColor::Black) => "○".to_string(),
                 };
 
                 line += &tile_string;
@@ -577,39 +559,42 @@ impl Sandbox for Game {
     }
 
     fn update(&mut self, message: Message) {
-        if message == Message::MenuMessage(MenuItem::ChooseColor(Tile::White)) {
-            self.menu.chosen_color = Tile::White
-        } else if message
-            == Message::MenuMessage(MenuItem::ChooseColor(Tile::Black))
-        {
-            self.menu.chosen_color = Tile::Black
-        } else if message == Message::MenuMessage(MenuItem::Play) {
-            self.menu.play_pressed = true;
-            if self.game_board.turn != self.menu.chosen_color {
-                self.game_board.colored_move(
-                    message,
-                    Computer,
-                    Player,
-                    self.game_board.turn,
-                )
+        match message {
+            Message::MenuMessage(menu_item) => match menu_item {
+                MenuItem::ChooseColor(color) => self.menu.chosen_color = color,
+                MenuItem::Play => {
+                    self.menu.play_pressed = true;
+                    if self.game_board.turn != self.menu.chosen_color {
+                        self.game_board.colored_move(
+                            message,
+                            Computer,
+                            Player,
+                            self.game_board.turn,
+                        )
+                    }
+                }
+            },
+            Message::Reset => {
+                *self = Self::new();
+                self.game_board.starting_position();
             }
-        } else if message == Message::Reset {
-            *self = Self::new();
-            self.game_board.starting_position();
-        } else if self.game_board.turn == self.menu.chosen_color {
-            self.game_board.colored_move(
-                message,
-                Player,
-                Computer,
-                self.game_board.turn,
-            )
-        } else {
-            self.game_board.colored_move(
-                message,
-                Computer,
-                Player,
-                self.game_board.turn,
-            )
+            message => {
+                if self.game_board.turn == self.menu.chosen_color {
+                    self.game_board.colored_move(
+                        message,
+                        Player,
+                        Computer,
+                        self.game_board.turn,
+                    )
+                } else {
+                    self.game_board.colored_move(
+                        message,
+                        Computer,
+                        Player,
+                        self.game_board.turn,
+                    )
+                }
+            }
         }
     }
 
@@ -630,18 +615,18 @@ impl Sandbox for Game {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuItem {
-    ChooseColor(Tile),
+    ChooseColor(StoneColor),
     Play,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Menu {
-    chosen_color: Tile,
+    chosen_color: StoneColor,
     play_pressed: bool,
 }
 impl Menu {
     fn new() -> Self {
         Menu {
-            chosen_color: Tile::Black,
+            chosen_color: StoneColor::Black,
             play_pressed: false,
         }
     }
@@ -657,24 +642,19 @@ fn menu(game: &Game) -> Container<Message> {
                 .height(Length::Units(100))
                 .width(Length::Units(100)),
             match game.menu.chosen_color {
-                Tile::Black => button(circle(40.0, Color::BLACK))
-                    .padding(10)
+                StoneColor::Black => button(circle(40.0, Color::BLACK))
                     .on_press(Message::MenuMessage(MenuItem::ChooseColor(
-                        Tile::White
-                    )))
-                    .style(theme::Button::Positive)
-                    .height(Length::Units(100))
-                    .width(Length::Units(100)),
-                Tile::White => button(circle(40.0, Color::WHITE))
-                    .padding(10)
+                        StoneColor::White
+                    ))),
+                StoneColor::White => button(circle(40.0, Color::WHITE))
                     .on_press(Message::MenuMessage(MenuItem::ChooseColor(
-                        Tile::Black
-                    )))
-                    .style(theme::Button::Positive)
-                    .height(Length::Units(100))
-                    .width(Length::Units(100)),
-                _ => unreachable!(),
+                        StoneColor::Black
+                    ))),
             }
+            .style(theme::Button::Positive)
+            .padding(10)
+            .height(Length::Units(100))
+            .width(Length::Units(100))
         ]
         .spacing(10),
     )
@@ -687,14 +667,15 @@ fn playfield(game: &Game) -> Container<Message> {
         (game.game_board.white_count, game.game_board.black_count);
     let tilebutton = |row: u32, column: u32| match game.game_board.board
         [pair_to_index(row, column) as usize]
+        .0
     {
-        Tile::Black => button(circle(30.0, Color::BLACK))
+        Some(StoneColor::Black) => button(circle(30.0, Color::BLACK))
             .on_press(Message::EmptyPressed(row, column))
             .style(theme::Button::Positive),
-        Tile::White => button(circle(30.0, Color::WHITE))
+        Some(StoneColor::White) => button(circle(30.0, Color::WHITE))
             .on_press(Message::EmptyPressed(row, column))
             .style(theme::Button::Positive),
-        _ => button(circle(30.0, Color::TRANSPARENT))
+        None => button(circle(30.0, Color::TRANSPARENT))
             .on_press(Message::EmptyPressed(row, column))
             .style(theme::Button::Positive),
     };
@@ -719,16 +700,16 @@ fn playfield(game: &Game) -> Container<Message> {
             .padding(20)
             .align_items(Alignment::Center),
             row![text(match game.game_board.win {
-                Tile::White => {
+                GameOutcome::Win(StoneColor::White) => {
                     "White wins!"
                 }
-                Tile::Black => {
+                GameOutcome::Win(StoneColor::Black) => {
                     "Black wins!"
                 }
-                Tile::Empty(DrawOrEmpty::Draw) => {
+                GameOutcome::Draw => {
                     "Draw!"
                 }
-                Tile::Empty(DrawOrEmpty::Empty) => {
+                GameOutcome::InProgress => {
                     "Awaiting results..."
                 }
             })]
