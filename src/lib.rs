@@ -127,12 +127,12 @@ impl Board {
                 self.black_count += 1;
             }
         };
-        self.next_to_taken[id] = false;
         Board::neighbours(id).iter().for_each(|neighbour| {
             if self.board[*neighbour].0.is_none() {
                 self.next_to_taken[*neighbour] = true;
             }
         });
+        self.next_to_taken[id] = false;
     }
 
     fn starting_position(&mut self) {
@@ -189,7 +189,17 @@ impl Board {
     }
 
     fn moves_are_possible(&self, color: StoneColor) -> bool {
-        for id in 0..WIDTH * HEIGHT {
+        for id in self.next_to_taken.iter().enumerate().fold(
+            Vec::with_capacity(64),
+            |mut acc, (id, next_to_taken)| {
+                if *next_to_taken {
+                    acc.push(id);
+                    acc
+                } else {
+                    acc
+                }
+            },
+        ) {
             if self.board[id].0.is_some()
                 || Self::neighbours(id)
                     .iter()
