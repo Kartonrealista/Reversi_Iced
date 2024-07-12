@@ -225,8 +225,8 @@ impl Board {
         let mut neighbour_color;
 
         let mut buf: Vec<usize> = Vec::with_capacity(20);
-        let mut white_count_update;
-        let mut black_count_update;
+        let mut white_count_update: i32;
+        let mut black_count_update: i32;
 
         for neighbour_id in Self::neighbours(id) {
             let (mut i, mut j) = index_to_pair(neighbour_id);
@@ -262,8 +262,8 @@ impl Board {
                         move_was_made = true;
                     }
                     buf.iter().for_each(|&id| self.board[id].0 = Some(color));
-                    self.black_count += black_count_update;
-                    self.white_count += white_count_update;
+                    self.black_count = (self.black_count as i32 + black_count_update) as usize;
+                    self.white_count = (self.white_count as i32 + white_count_update) as usize;
                     break;
                 }
                 if (i == 0 && dir_i == -1)
