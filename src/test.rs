@@ -12,27 +12,33 @@ mod tests {
             let mut board = Board::new();
             board.make_move(3, 2, StoneColor::Black);
             println!("{board}");
+
             let mut control_board = Board::new();
             control_board.board[pair_to_index(3, 2)].0 = Some(StoneColor::Black);
             control_board.board[pair_to_index(3, 3)].0 = Some(StoneColor::Black);
+            
             control_board.black_count += 2;
             control_board.white_count -= 1;
 
             control_board.next_to_taken = [false; WIDTH * HEIGHT];
-            control_board.next_to_taken[2 * WIDTH + 1] = true;
-            control_board.next_to_taken[2 * WIDTH + 2] = true;
-            control_board.next_to_taken[2 * WIDTH + 3] = true;
-            control_board.next_to_taken[2 * WIDTH + 4] = true;
-            control_board.next_to_taken[2 * WIDTH + 5] = true;
-            control_board.next_to_taken[3 * WIDTH + 1] = true;
-            control_board.next_to_taken[3 * WIDTH + 5] = true;
-            control_board.next_to_taken[4 * WIDTH + 1] = true;
-            control_board.next_to_taken[4 * WIDTH + 2] = true;
-            control_board.next_to_taken[4 * WIDTH + 5] = true;
-            control_board.next_to_taken[5 * WIDTH + 2] = true;
-            control_board.next_to_taken[5 * WIDTH + 3] = true;
-            control_board.next_to_taken[5 * WIDTH + 4] = true;
-            control_board.next_to_taken[5 * WIDTH + 5] = true;
+            [
+                2 * WIDTH + 1,
+                2 * WIDTH + 2,
+                2 * WIDTH + 3,
+                2 * WIDTH + 4,
+                2 * WIDTH + 5,
+                3 * WIDTH + 1,
+                3 * WIDTH + 5,
+                4 * WIDTH + 1,
+                4 * WIDTH + 2,
+                4 * WIDTH + 5,
+                5 * WIDTH + 2,
+                5 * WIDTH + 3,
+                5 * WIDTH + 4,
+                5 * WIDTH + 5,
+            ]
+            .iter()
+            .for_each(|&id| control_board.next_to_taken[id] = true);
 
             println!("{control_board}");
 
