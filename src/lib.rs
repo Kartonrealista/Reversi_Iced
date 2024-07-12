@@ -15,12 +15,12 @@ mod circles;
 pub const WIDTH: usize = 8;
 pub const HEIGHT: usize = 8;
 
-pub fn pair_to_index(i: usize, j: usize) -> usize {
-    j + i * WIDTH as usize
+pub const fn pair_to_index(i: usize, j: usize) -> usize {
+    j + i * WIDTH
 }
-pub fn index_to_pair(id: usize) -> (usize, usize) {
-    let j = id % WIDTH as usize;
-    let i = id / WIDTH as usize;
+pub const fn index_to_pair(id: usize) -> (usize, usize) {
+    let j = id % WIDTH;
+    let i = id / WIDTH;
     (i, j)
 }
 
@@ -103,7 +103,7 @@ pub struct Board {
     pub win: GameOutcome,
     pub white_count: usize,
     pub black_count: usize,
-    pub next_to_taken: Vec<usize>,
+    pub next_to_taken: [bool; WIDTH * HEIGHT],
 }
 impl Board {
     fn make_empty() -> Board {
@@ -113,7 +113,7 @@ impl Board {
             win: GameOutcome::InProgress,
             white_count: 0,
             black_count: 0,
-            next_to_taken: Vec::with_capacity(64),
+            next_to_taken: [false; WIDTH * HEIGHT],
         }
     }
 
@@ -127,13 +127,17 @@ impl Board {
                 self.black_count += 1;
             }
         };
-        Board::neighbours(id);
-                //self.next_to_taken.push(id)
+        self.next_to_taken[id] = false;
+        Board::neighbours(id).iter().for_each(|neighbour| {
+            if self.board[*neighbour].0.is_none() {
+                self.next_to_taken[*neighbour] = true;
+            }
+        });
     }
 
     fn starting_position(&mut self) {
-        let id1 = pair_to_index((HEIGHT / 2 - 1) as usize, (WIDTH / 2 - 1) as usize);
-        let id2 = pair_to_index((HEIGHT / 2) as usize, (WIDTH / 2 - 1) as usize);
+        let id1 = pair_to_index(HEIGHT / 2 - 1, WIDTH / 2 - 1);
+        let id2 = pair_to_index(HEIGHT / 2, WIDTH / 2 - 1);
         self.place_stone(id1, StoneColor::White);
         self.place_stone(id1 + 1, StoneColor::Black);
         self.place_stone(id2, StoneColor::Black);
@@ -148,7 +152,7 @@ impl Board {
     fn neighbours(id: usize) -> Vec<usize> {
         let (i, j) = index_to_pair(id);
         let mut out = Vec::with_capacity(8);
-        if i + 1 < HEIGHT as usize {
+        if i + 1 < HEIGHT {
             let temp = pair_to_index(i + 1, j);
             out.push(temp);
         }
@@ -156,7 +160,7 @@ impl Board {
             let temp = pair_to_index(i - 1, j);
             out.push(temp);
         }
-        if j + 1 < WIDTH as usize {
+        if j + 1 < WIDTH {
             let temp = pair_to_index(i, j + 1);
             out.push(temp);
         }
@@ -165,15 +169,15 @@ impl Board {
             out.push(temp);
         }
 
-        if i > 0 && j + 1 < WIDTH as usize {
+        if i > 0 && j + 1 < WIDTH {
             let temp = pair_to_index(i - 1, j + 1);
             out.push(temp);
         }
-        if j > 0 && i + 1 < HEIGHT as usize {
+        if j > 0 && i + 1 < HEIGHT {
             let temp = pair_to_index(i + 1, j - 1);
             out.push(temp);
         }
-        if i + 1 < HEIGHT as usize && j + 1 < WIDTH as usize {
+        if i + 1 < HEIGHT && j + 1 < WIDTH {
             let temp = pair_to_index(i + 1, j + 1);
             out.push(temp);
         }
@@ -186,14 +190,14 @@ impl Board {
 
     fn moves_are_possible(&self, color: StoneColor) -> bool {
         for id in 0..WIDTH * HEIGHT {
-            if self.board[id as usize].0 != None
-                || Self::neighbours(id as usize)
+            if self.board[id].0.is_some()
+                || Self::neighbours(id)
                     .iter()
-                    .all(|&neighbour| self.board[neighbour as usize].0 != Some(color.reverse()))
+                    .all(|&neighbour| self.board[neighbour].0 != Some(color.reverse()))
             {
                 continue;
             };
-            let (i, j) = index_to_pair(id as usize);
+            let (i, j) = index_to_pair(id);
             if self.clone().make_move(i, j, color) {
                 return true;
             }
@@ -205,7 +209,7 @@ impl Board {
         let id = pair_to_index(row, column);
         //let cloned_self = self.clone();
         let mut move_was_made = false;
-        if self.board[id as usize].0 != None {
+        if self.board[id].0.is_some() {
             return false;
         }
         let mut neighbour_color;
@@ -221,16 +225,16 @@ impl Board {
             white_count_update = 0;
             black_count_update = 0;
             buf.clear();
-            if self.board[new_id as usize].0 == Some(color) {
+            if self.board[new_id].0 == Some(color) {
                 continue;
             }
             loop {
-                neighbour_color = self.board[new_id as usize].0;
-                if neighbour_color == None {
+                neighbour_color = self.board[new_id].0;
+                if neighbour_color.is_none() {
                     break;
                 }
 
-                if neighbour_color != None && neighbour_color != Some(color) {
+                if neighbour_color.is_some() && neighbour_color != Some(color) {
                     match color {
                         StoneColor::Black => {
                             white_count_update -= 1;
@@ -244,28 +248,24 @@ impl Board {
                     buf.push(new_id);
                 } else if (neighbour_color == Some(color)) && !buf.is_empty() {
                     if !move_was_made {
-                        self.place_stone(id as usize, color);
+                        self.place_stone(id, color);
+                        move_was_made = true;
                     }
-                    move_was_made = true;
-                    buf.iter()
-                        .for_each(|&id| self.board[id as usize].0 = Some(color));
+                    buf.iter().for_each(|&id| self.board[id].0 = Some(color));
                     self.black_count += black_count_update;
                     self.white_count += white_count_update;
                     break;
                 }
                 if (i == 0 && dir_i == -1)
-                    || (i == (HEIGHT - 1) as usize && dir_i == 1)
+                    || (i == (HEIGHT - 1) && dir_i == 1)
                     || (j == 0 && dir_j == -1)
-                    || (j == (WIDTH - 1) as usize && dir_j == 1)
+                    || (j == (WIDTH - 1) && dir_j == 1)
                 {
                     break;
                 }
                 (i, j) = ((i as i32 + dir_i) as usize, (j as i32 + dir_j) as usize);
                 new_id = pair_to_index(i, j);
             }
-        }
-        if move_was_made {
-            todo!()
         }
         move_was_made
     }
@@ -278,7 +278,7 @@ impl Board {
     }
     fn wincheck(&self) -> GameOutcome {
         let (white_tiles, black_tiles) = (self.white_count, self.black_count);
-        if self.board.iter().all(|&x| x.0 != None)
+        if self.board.iter().all(|&x| x.0.is_some())
             || (!self.moves_are_possible(StoneColor::Black)
                 && !self.moves_are_possible(StoneColor::White))
         {
@@ -302,11 +302,21 @@ impl Board {
             children: Vec::with_capacity(32),
         };
         let mut ids = Vec::with_capacity(32);
-        for id in &self.next_to_taken {
-            let (row, column) = index_to_pair(*id);
+        for id in self.next_to_taken.iter().enumerate().fold(
+            Vec::with_capacity(64),
+            |mut acc, (id, next_to_taken)| {
+                if *next_to_taken {
+                    acc.push(id);
+                    acc
+                } else {
+                    acc
+                }
+            },
+        ) {
+            let (row, column) = index_to_pair(id);
             let mut current_board = score.board.clone();
             if current_board.make_move(row, column, player) {
-                ids.push(*id);
+                ids.push(id);
                 score.add_child(Node {
                     is_original_player: true,
                     value: 0,
@@ -341,21 +351,24 @@ impl Board {
         let player = color;
         let opponent = player.reverse();
         if depth == 2 {
-            for id in 0..WIDTH * HEIGHT {
-                if node.board.board[id as usize].0 != None
-                    || Self::neighbours(id as usize).iter().all(|&neighbour| {
-                        node.board.board[neighbour as usize].0 != Some(color.reverse())
-                    })
-                {
-                    continue;
-                };
-                let (row, column) = index_to_pair(id as usize);
+            for id in node.board.next_to_taken.iter().enumerate().fold(
+                Vec::with_capacity(64),
+                |mut acc, (id, next_to_taken)| {
+                    if *next_to_taken {
+                        acc.push(id);
+                        acc
+                    } else {
+                        acc
+                    }
+                },
+            ) {
+                let (row, column) = index_to_pair(id);
                 let mut current_board = node.board.clone();
                 let corner_ids = [0, WIDTH - 1, WIDTH * HEIGHT - 1, (WIDTH) * (HEIGHT - 1)];
                 let corner_boost = corner_ids.iter().fold(0, |acc, &id| {
-                    if current_board.board[id as usize].0 == Some(orignal_color) {
+                    if current_board.board[id].0 == Some(orignal_color) {
                         acc + 80
-                    } else if current_board.board[id as usize].0 == None {
+                    } else if current_board.board[id].0.is_none() {
                         acc + 40
                     } else {
                         acc
@@ -373,10 +386,17 @@ impl Board {
             return;
         }
         let mut max: usize = 0;
-        for id in 0..WIDTH * HEIGHT {
-            if node.board.board[id as usize].0 != None {
-                continue;
-            };
+        for id in node.board.next_to_taken.iter().enumerate().fold(
+            Vec::with_capacity(64),
+            |mut acc, (id, next_to_taken)| {
+                if *next_to_taken {
+                    acc.push(id);
+                    acc
+                } else {
+                    acc
+                }
+            },
+        ) {
             let (row, column) = index_to_pair(id);
             let mut current_board = node.board.clone();
             if current_board.make_move(row, column, player) {
@@ -490,7 +510,7 @@ impl Display for Board {
             let mut line = String::new();
             line.push_str(" |  ");
             for j in 0..WIDTH {
-                let tile = &self.board[pair_to_index(i, j) as usize];
+                let tile = &self.board[pair_to_index(i, j)];
                 let tile_string = match tile.0 {
                     None => "\x1B[1;93m□\x1B[0m".to_string(),
                     Some(StoneColor::White) => "●".to_string(),
@@ -643,20 +663,18 @@ fn menu(game: &Game) -> Container<Message> {
 
 fn playfield(game: &Game) -> Container<Message> {
     let (white_stones, black_stones) = (game.game_board.white_count, game.game_board.black_count);
-    let tilebutton = |row: usize, column: usize| match game.game_board.board
-        [pair_to_index(row, column)]
-        .0
-    {
-        Some(StoneColor::Black) => button(circle(30.0, Color::BLACK))
-            .on_press(Message::EmptyPressed(row, column))
-            .style(theme::Button::Positive),
-        Some(StoneColor::White) => button(circle(30.0, Color::WHITE))
-            .on_press(Message::EmptyPressed(row, column))
-            .style(theme::Button::Positive),
-        None => button(circle(30.0, Color::TRANSPARENT))
-            .on_press(Message::EmptyPressed(row, column))
-            .style(theme::Button::Positive),
-    };
+    let tilebutton =
+        |row: usize, column: usize| match game.game_board.board[pair_to_index(row, column)].0 {
+            Some(StoneColor::Black) => button(circle(30.0, Color::BLACK))
+                .on_press(Message::EmptyPressed(row, column))
+                .style(theme::Button::Positive),
+            Some(StoneColor::White) => button(circle(30.0, Color::WHITE))
+                .on_press(Message::EmptyPressed(row, column))
+                .style(theme::Button::Positive),
+            None => button(circle(30.0, Color::TRANSPARENT))
+                .on_press(Message::EmptyPressed(row, column))
+                .style(theme::Button::Positive),
+        };
     let playboard = (0..WIDTH).fold(Row::new(), |acc, column| {
         let new_column = (0..HEIGHT).fold(Column::new(), |acc2, row| {
             acc2.push(tilebutton(row, column))
