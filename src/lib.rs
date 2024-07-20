@@ -4,7 +4,6 @@ use iced::{
     widget::{button, column, container, row, text, Column, Container, Row},
     {theme, Color, Length}, {Alignment, Element, Sandbox},
 };
-use rand::seq::SliceRandom;
 use std::{
     cmp::Ordering,
     fmt::{Display, Formatter, Result},
@@ -32,33 +31,44 @@ struct Node {
     pub is_original_player: bool,
     pub board: Board,
     pub children: Vec<Node>,
+    pub id: Option<usize>,
 }
 impl Node {
-    fn minmax(&mut self) -> usize {
+    fn minmax(&mut self) -> (usize, Option<usize>) {
         if self.children.is_empty() {
-            self.value
+            (self.value, self.id)
         } else {
             for child in &mut self.children {
                 if child.value == 0 {
-                    child.value = child.minmax()
+                    (child.value, _) = child.minmax()
                 }
             }
             if !self.is_original_player {
-                self.value = self
+                let chosen_child = self
                     .children
                     .iter()
                     .max_by_key(|child| child.value)
-                    .unwrap()
-                    .value;
-                self.value
+                    .unwrap();
+
+                self.value = chosen_child.value;
+                if chosen_child.id.is_some() {
+                    self.id = chosen_child.id
+                };
+                self.children.clear();
+                (self.value, self.id)
             } else {
-                self.value = self
+                let chosen_child = self
                     .children
                     .iter()
                     .min_by_key(|child| child.value)
-                    .unwrap()
-                    .value;
-                self.value
+                    .unwrap();
+
+                self.value = chosen_child.value;
+                if chosen_child.id.is_some() {
+                    self.id = chosen_child.id
+                };
+                self.children.clear();
+                (self.value, self.id)
             }
         }
     }
@@ -312,6 +322,7 @@ impl Board {
             value: 0,
             board,
             children: Vec::with_capacity(32),
+            id: None,
         };
         let mut second_node_with_score = node_with_score.clone();
         let mut ids = Vec::with_capacity(32);
@@ -329,45 +340,37 @@ impl Board {
             let (row, column) = index_to_pair(id);
             let mut current_board = second_node_with_score.board.clone();
             if current_board.make_move(row, column, player) {
-
                 ids.push(id);
                 second_node_with_score.add_child(Node {
                     is_original_player: true,
                     value: 0,
                     board: current_board,
                     children: Vec::with_capacity(10),
+                    id: Some(id),
                 });
             }
         }
         let (tx, rx) = mpsc::channel();
 
-        for (child, id) in second_node_with_score.children.into_iter().zip(ids) {
+        for child in second_node_with_score.children.into_iter(){
             let txn = tx.clone();
             thread::spawn(move || {
                 let mut new_node = child;
                 Self::minmax_helper(opponent, &mut new_node, 6, false, color);
-                txn.send((new_node, id)).unwrap()
+                txn.send(new_node).unwrap()
             });
         }
-        let mut new_ids = Vec::with_capacity(32);
         drop(tx);
-        for (node, id) in rx {
-            new_ids.push(id);
+        for node in rx {
             node_with_score.add_child(node);
         }
 
-        let max = node_with_score.minmax();
-        let mut zipped_ids_with_children_nodes: Vec<(&Node, usize)> =
-            node_with_score.children.iter().zip(new_ids).collect();
-        let mut rng = rand::thread_rng();
-        zipped_ids_with_children_nodes.shuffle(&mut rng);
-        for (node, id) in zipped_ids_with_children_nodes {
-            if node.value == max {
-                let (row, column) = index_to_pair(id);
-                return self.make_move(row, column, color);
-            }
+        let (_, max_id) = node_with_score.minmax();
+        match max_id {
+            Some(id) => {let (row, column) = index_to_pair(id);
+            return self.make_move(row, column, color);},
+            None => false
         }
-        false
     }
     fn minmax_helper(
         color: StoneColor,
@@ -408,12 +411,16 @@ impl Board {
                         value: 2 * current_board.count_of(orignal_color) + 1 + corner_boost,
                         board: current_board,
                         children: vec![],
+                        id: None,
                     });
                 }
             }
+            node.minmax();
             return;
         }
         let mut max: usize = 0;
+
+        let mut current_board;
         for id in node.board.next_to_taken.iter().enumerate().fold(
             Vec::with_capacity(64),
             |mut acc, (id, next_to_taken)| {
@@ -426,7 +433,7 @@ impl Board {
             },
         ) {
             let (row, column) = index_to_pair(id);
-            let mut current_board = node.board.clone();
+            current_board = node.board.clone();
             if current_board.make_move(row, column, player) {
                 let score_player = current_board.count_of(player);
                 if max < score_player {
@@ -438,6 +445,7 @@ impl Board {
                         value: 0,
                         board: current_board.clone(),
                         children: Vec::with_capacity(10),
+                        id: None,
                     });
                 }
             }
@@ -457,6 +465,7 @@ impl Board {
                 !is_original_player,
                 orignal_color,
             );
+            child.minmax();
         }
     }
     pub fn colored_move(
