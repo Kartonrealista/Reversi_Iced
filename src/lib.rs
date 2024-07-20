@@ -8,6 +8,8 @@ use rand::seq::SliceRandom;
 use std::{
     cmp::Ordering,
     fmt::{Display, Formatter, Result},
+    sync::mpsc,
+    thread,
 };
 use PlayerOrComputer::*;
 mod circles;
@@ -305,12 +307,13 @@ impl Board {
         let player = color;
         let opponent = player.reverse();
         let board = self.clone();
-        let mut score = Node {
+        let mut node_with_score = Node {
             is_original_player: false,
             value: 0,
             board,
             children: Vec::with_capacity(32),
         };
+        let mut second_node_with_score = node_with_score.clone();
         let mut ids = Vec::with_capacity(32);
         for id in self.next_to_taken.iter().enumerate().fold(
             Vec::with_capacity(64),
@@ -324,10 +327,11 @@ impl Board {
             },
         ) {
             let (row, column) = index_to_pair(id);
-            let mut current_board = score.board.clone();
+            let mut current_board = second_node_with_score.board.clone();
             if current_board.make_move(row, column, player) {
+
                 ids.push(id);
-                score.add_child(Node {
+                second_node_with_score.add_child(Node {
                     is_original_player: true,
                     value: 0,
                     board: current_board,
@@ -335,12 +339,26 @@ impl Board {
                 });
             }
         }
-        for child in &mut score.children {
-            Self::minmax_helper(opponent, child, 6, false, color);
+        let (tx, rx) = mpsc::channel();
+
+        for (child, id) in second_node_with_score.children.into_iter().zip(ids) {
+            let txn = tx.clone();
+            thread::spawn(move || {
+                let mut new_node = child;
+                Self::minmax_helper(opponent, &mut new_node, 6, false, color);
+                txn.send((new_node, id)).unwrap()
+            });
         }
-        let max = score.minmax();
+        let mut new_ids = Vec::with_capacity(32);
+        drop(tx);
+        for (node, id) in rx {
+            new_ids.push(id);
+            node_with_score.add_child(node);
+        }
+
+        let max = node_with_score.minmax();
         let mut zipped_ids_with_children_nodes: Vec<(&Node, usize)> =
-            score.children.iter().zip(ids).collect();
+            node_with_score.children.iter().zip(new_ids).collect();
         let mut rng = rand::thread_rng();
         zipped_ids_with_children_nodes.shuffle(&mut rng);
         for (node, id) in zipped_ids_with_children_nodes {
