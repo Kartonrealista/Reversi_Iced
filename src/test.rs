@@ -10,13 +10,14 @@ mod tests {
         #[test]
         fn white_stone_row() {
             let mut board = Board::new();
-            board.make_move(3, 2, StoneColor::Black);
+            let mut neighbours = Vec::with_capacity(8);
+            board.make_move(3, 2, StoneColor::Black, &mut neighbours);
             println!("{board}");
 
             let mut control_board = Board::new();
             control_board.board[pair_to_index(3, 2)].0 = Some(StoneColor::Black);
             control_board.board[pair_to_index(3, 3)].0 = Some(StoneColor::Black);
-            
+
             control_board.black_count += 2;
             control_board.white_count -= 1;
 
@@ -52,7 +53,8 @@ mod tests {
         #[test]
         fn black_stone_row() {
             let mut board = Board::new();
-            board.make_move(4, 2, StoneColor::White);
+            let mut neighbours = Vec::with_capacity(8);
+            board.make_move(4, 2, StoneColor::White, &mut neighbours);
             println!("{board}");
             let mut control_board = Board::new();
             control_board.board[pair_to_index(4, 2) as usize].0 = Some(StoneColor::White);
@@ -100,8 +102,8 @@ mod tests {
         [3 * WIDTH + 1, 4 * WIDTH + 1, 5 * WIDTH + 1]
             .iter()
             .for_each(|&id| board.next_to_taken[id] = true);
-
-        board.make_move(4, 1, StoneColor::White);
+        let mut neighbours = Vec::with_capacity(8);
+        board.make_move(4, 1, StoneColor::White, &mut neighbours);
         println!("{board}");
 
         let mut control_board = Board::new();

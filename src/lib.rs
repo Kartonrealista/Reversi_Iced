@@ -31,16 +31,16 @@ struct Node {
     pub is_original_player: bool,
     pub board: Board,
     pub children: Vec<Node>,
-    pub id: Option<usize>,
+    pub option_id: Option<usize>,
 }
 impl Node {
-    fn minmax(&mut self) -> (usize, Option<usize>) {
+    fn minmax(&mut self) -> usize {
         if self.children.is_empty() {
-            (self.value, self.id)
+            self.value
         } else {
             for child in &mut self.children {
                 if child.value == 0 {
-                    (child.value, _) = child.minmax()
+                    child.value = child.minmax()
                 }
             }
             if !self.is_original_player {
@@ -51,11 +51,11 @@ impl Node {
                     .unwrap();
 
                 self.value = chosen_child.value;
-                if chosen_child.id.is_some() {
-                    self.id = chosen_child.id
+                if chosen_child.option_id.is_some() {
+                    self.option_id = chosen_child.option_id
                 };
                 self.children.clear();
-                (self.value, self.id)
+                self.value
             } else {
                 let chosen_child = self
                     .children
@@ -64,11 +64,11 @@ impl Node {
                     .unwrap();
 
                 self.value = chosen_child.value;
-                if chosen_child.id.is_some() {
-                    self.id = chosen_child.id
+                if chosen_child.option_id.is_some() {
+                    self.option_id = chosen_child.option_id
                 };
                 self.children.clear();
-                (self.value, self.id)
+                self.value
             }
         }
     }
@@ -139,7 +139,9 @@ impl Board {
                 self.black_count += 1;
             }
         };
-        Board::neighbours(id).iter().for_each(|neighbour| {
+        let mut neighbours = Vec::with_capacity(8);
+        Self::neighbours(id, &mut neighbours);
+        neighbours.iter().for_each(|neighbour| {
             if self.board[*neighbour].0.is_none() {
                 self.next_to_taken[*neighbour] = true;
             }
@@ -161,46 +163,45 @@ impl Board {
         board.starting_position();
         board
     }
-    fn neighbours(id: usize) -> Vec<usize> {
-        let (i, j) = index_to_pair(id);
-        let mut out = Vec::with_capacity(8);
-        if i + 1 < HEIGHT {
-            let temp = pair_to_index(i + 1, j);
-            out.push(temp);
-        }
-        if i > 0 {
-            let temp = pair_to_index(i - 1, j);
-            out.push(temp);
-        }
-        if j + 1 < WIDTH {
-            let temp = pair_to_index(i, j + 1);
-            out.push(temp);
-        }
-        if j > 0 {
-            let temp = pair_to_index(i, j - 1);
-            out.push(temp);
-        }
+    fn neighbours(id: usize, out: &mut Vec<usize>) {
+        let (row, column) = index_to_pair(id);
 
-        if i > 0 && j + 1 < WIDTH {
-            let temp = pair_to_index(i - 1, j + 1);
+        if row + 1 < HEIGHT {
+            let temp = pair_to_index(row + 1, column);
             out.push(temp);
         }
-        if j > 0 && i + 1 < HEIGHT {
-            let temp = pair_to_index(i + 1, j - 1);
+        if row > 0 {
+            let temp = pair_to_index(row - 1, column);
             out.push(temp);
         }
-        if i + 1 < HEIGHT && j + 1 < WIDTH {
-            let temp = pair_to_index(i + 1, j + 1);
+        if column + 1 < WIDTH {
+            let temp = pair_to_index(row, column + 1);
             out.push(temp);
         }
-        if i > 0 && j > 0 {
-            let temp = pair_to_index(i - 1, j - 1);
+        if column > 0 {
+            let temp = pair_to_index(row, column - 1);
             out.push(temp);
         }
-        out
+        if row > 0 && column + 1 < WIDTH {
+            let temp = pair_to_index(row - 1, column + 1);
+            out.push(temp);
+        }
+        if column > 0 && row + 1 < HEIGHT {
+            let temp = pair_to_index(row + 1, column - 1);
+            out.push(temp);
+        }
+        if row + 1 < HEIGHT && column + 1 < WIDTH {
+            let temp = pair_to_index(row + 1, column + 1);
+            out.push(temp);
+        }
+        if row > 0 && column > 0 {
+            let temp = pair_to_index(row - 1, column - 1);
+            out.push(temp);
+        }
     }
 
     fn moves_are_possible(&self, color: StoneColor) -> bool {
+        let mut neighbours: Vec<usize> = Vec::with_capacity(8);
         for id in self.next_to_taken.iter().enumerate().fold(
             Vec::with_capacity(64),
             |mut acc, (id, next_to_taken)| {
@@ -212,22 +213,30 @@ impl Board {
                 }
             },
         ) {
+            neighbours.clear();
+            Self::neighbours(id, &mut neighbours);
             if self.board[id].0.is_some()
-                || Self::neighbours(id)
+                || neighbours
                     .iter()
                     .all(|&neighbour| self.board[neighbour].0 != Some(color.reverse()))
             {
                 continue;
             };
             let (i, j) = index_to_pair(id);
-            if self.clone().make_move(i, j, color) {
+            if self.clone().make_move(i, j, color, &mut neighbours) {
                 return true;
             }
         }
         false
     }
 
-    pub fn make_move(&mut self, row: usize, column: usize, color: StoneColor) -> bool {
+    pub fn make_move(
+        &mut self,
+        row: usize,
+        column: usize,
+        color: StoneColor,
+        neighbours: &mut Vec<usize>,
+    ) -> bool {
         let id = pair_to_index(row, column);
         //let cloned_self = self.clone();
         let mut move_was_made = false;
@@ -239,19 +248,20 @@ impl Board {
         let mut buf: Vec<usize> = Vec::with_capacity(20);
         let mut white_count_update: i32;
         let mut black_count_update: i32;
-
-        for neighbour_id in Self::neighbours(id) {
-            let (mut i, mut j) = index_to_pair(neighbour_id);
+        neighbours.clear();
+        Self::neighbours(id, neighbours);
+        for neighbour_id in neighbours {
+            let (mut i, mut j) = index_to_pair(*neighbour_id);
             let (dir_i, dir_j) = (i as i32 - row as i32, j as i32 - column as i32);
-            let mut new_id = neighbour_id;
+            let new_id = neighbour_id;
             white_count_update = 0;
             black_count_update = 0;
             buf.clear();
-            if self.board[new_id].0 == Some(color) {
+            if self.board[*new_id].0 == Some(color) {
                 continue;
             }
             loop {
-                neighbour_color = self.board[new_id].0;
+                neighbour_color = self.board[*new_id].0;
                 if neighbour_color.is_none() {
                     break;
                 }
@@ -267,7 +277,7 @@ impl Board {
                             black_count_update -= 1;
                         }
                     };
-                    buf.push(new_id);
+                    buf.push(*new_id);
                 } else if (neighbour_color == Some(color)) && !buf.is_empty() {
                     if !move_was_made {
                         self.place_stone(id, color);
@@ -286,7 +296,7 @@ impl Board {
                     break;
                 }
                 (i, j) = ((i as i32 + dir_i) as usize, (j as i32 + dir_j) as usize);
-                new_id = pair_to_index(i, j);
+                *new_id = pair_to_index(i, j);
             }
         }
         move_was_made
@@ -322,10 +332,11 @@ impl Board {
             value: 0,
             board,
             children: Vec::with_capacity(32),
-            id: None,
+            option_id: None,
         };
         let mut second_node_with_score = node_with_score.clone();
         let mut ids = Vec::with_capacity(32);
+        let mut neighbours = Vec::with_capacity(8);
         for id in self.next_to_taken.iter().enumerate().fold(
             Vec::with_capacity(64),
             |mut acc, (id, next_to_taken)| {
@@ -339,24 +350,25 @@ impl Board {
         ) {
             let (row, column) = index_to_pair(id);
             let mut current_board = second_node_with_score.board.clone();
-            if current_board.make_move(row, column, player) {
+            if current_board.make_move(row, column, player, &mut neighbours) {
                 ids.push(id);
                 second_node_with_score.add_child(Node {
                     is_original_player: true,
                     value: 0,
                     board: current_board,
                     children: Vec::with_capacity(10),
-                    id: Some(id),
+                    option_id: Some(id),
                 });
             }
         }
         let (tx, rx) = mpsc::channel();
 
-        for child in second_node_with_score.children.into_iter(){
+        for child in second_node_with_score.children.into_iter() {
             let txn = tx.clone();
             thread::spawn(move || {
+                let mut neighbours = Vec::with_capacity(8);
                 let mut new_node = child;
-                Self::minmax_helper(opponent, &mut new_node, 6, false, color);
+                Self::minmax_helper(opponent, &mut new_node, 6, false, color, &mut neighbours);
                 txn.send(new_node).unwrap()
             });
         }
@@ -365,11 +377,13 @@ impl Board {
             node_with_score.add_child(node);
         }
 
-        let (_, max_id) = node_with_score.minmax();
-        match max_id {
-            Some(id) => {let (row, column) = index_to_pair(id);
-            return self.make_move(row, column, color);},
-            None => false
+        node_with_score.minmax();
+        match node_with_score.option_id {
+            Some(id) => {
+                let (row, column) = index_to_pair(id);
+                return self.make_move(row, column, color, &mut neighbours);
+            }
+            None => false,
         }
     }
     fn minmax_helper(
@@ -378,6 +392,7 @@ impl Board {
         depth: usize,
         is_original_player: bool,
         orignal_color: StoneColor,
+        neighbours: &mut Vec<usize>
     ) {
         let player = color;
         let opponent = player.reverse();
@@ -405,13 +420,13 @@ impl Board {
                         acc
                     }
                 });
-                if current_board.make_move(row, column, player) {
+                if current_board.make_move(row, column, player, neighbours) {
                     node.add_child(Node {
                         is_original_player: false,
                         value: 2 * current_board.count_of(orignal_color) + 1 + corner_boost,
                         board: current_board,
                         children: vec![],
-                        id: None,
+                        option_id: None,
                     });
                 }
             }
@@ -434,7 +449,7 @@ impl Board {
         ) {
             let (row, column) = index_to_pair(id);
             current_board = node.board.clone();
-            if current_board.make_move(row, column, player) {
+            if current_board.make_move(row, column, player, neighbours) {
                 let score_player = current_board.count_of(player);
                 if max < score_player {
                     max = score_player
@@ -445,7 +460,7 @@ impl Board {
                         value: 0,
                         board: current_board.clone(),
                         children: Vec::with_capacity(10),
-                        id: None,
+                        option_id: None,
                     });
                 }
             }
@@ -464,6 +479,7 @@ impl Board {
                 depth - 1,
                 !is_original_player,
                 orignal_color,
+                neighbours
             );
             child.minmax();
         }
@@ -481,9 +497,9 @@ impl Board {
             (Computer, Player) => (&Message::ComputerPlays, &message),
             (Computer, Computer) => unreachable!(),
         };
-
+        let mut neighbours = Vec::with_capacity(8);
         if match *mover1 {
-            Message::EmptyPressed(i, j) => self.make_move(i, j, color),
+            Message::EmptyPressed(i, j) => self.make_move(i, j, color, &mut neighbours),
             Message::ComputerPlays => self.minmax_move(color),
             _ => false,
         } {
