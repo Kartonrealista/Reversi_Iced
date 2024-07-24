@@ -392,22 +392,23 @@ impl Board {
         depth: usize,
         is_original_player: bool,
         orignal_color: StoneColor,
-        neighbours: &mut Vec<usize>
+        neighbours: &mut Vec<usize>,
     ) {
+        let next_to_taken_ids = node.board.next_to_taken.iter().enumerate().fold(
+            Vec::with_capacity(64),
+            |mut acc, (id, next_to_taken)| {
+                if *next_to_taken {
+                    acc.push(id);
+                    acc
+                } else {
+                    acc
+                }
+            },
+        );
         let player = color;
         let opponent = player.reverse();
         if depth == 2 {
-            for id in node.board.next_to_taken.iter().enumerate().fold(
-                Vec::with_capacity(64),
-                |mut acc, (id, next_to_taken)| {
-                    if *next_to_taken {
-                        acc.push(id);
-                        acc
-                    } else {
-                        acc
-                    }
-                },
-            ) {
+            for id in next_to_taken_ids {
                 let (row, column) = index_to_pair(id);
                 let mut current_board = node.board.clone();
                 let corner_ids = [0, WIDTH - 1, WIDTH * HEIGHT - 1, (WIDTH) * (HEIGHT - 1)];
@@ -436,17 +437,7 @@ impl Board {
         let mut max: usize = 0;
 
         let mut current_board;
-        for id in node.board.next_to_taken.iter().enumerate().fold(
-            Vec::with_capacity(64),
-            |mut acc, (id, next_to_taken)| {
-                if *next_to_taken {
-                    acc.push(id);
-                    acc
-                } else {
-                    acc
-                }
-            },
-        ) {
+        for id in next_to_taken_ids {
             let (row, column) = index_to_pair(id);
             current_board = node.board.clone();
             if current_board.make_move(row, column, player, neighbours) {
@@ -458,7 +449,7 @@ impl Board {
                     node.add_child(Node {
                         is_original_player,
                         value: 0,
-                        board: current_board.clone(),
+                        board: current_board,
                         children: Vec::with_capacity(10),
                         option_id: None,
                     });
@@ -466,7 +457,17 @@ impl Board {
             }
         }
         if node.children.is_empty() {
-            node.value = 2 * node.board.count_of(orignal_color) + 1;
+            let corner_ids = [0, WIDTH - 1, WIDTH * HEIGHT - 1, (WIDTH) * (HEIGHT - 1)];
+            let corner_boost = corner_ids.iter().fold(0, |acc, &id| {
+                if node.board.board[id].0 == Some(orignal_color) {
+                    acc + 80
+                } else if node.board.board[id].0.is_none() {
+                    acc + 40
+                } else {
+                    acc
+                }
+            });
+            node.value = 2 * node.board.count_of(orignal_color) + 1 + corner_boost;
             return;
         }
         // for i in node.children.iter() {
@@ -479,7 +480,7 @@ impl Board {
                 depth - 1,
                 !is_original_player,
                 orignal_color,
-                neighbours
+                neighbours,
             );
             child.minmax();
         }
