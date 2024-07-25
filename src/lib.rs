@@ -238,7 +238,6 @@ impl Board {
         neighbours: &mut Vec<usize>,
     ) -> bool {
         let id = pair_to_index(row, column);
-        //let cloned_self = self.clone();
         let mut move_was_made = false;
         if self.board[id].0.is_some() {
             return false;
